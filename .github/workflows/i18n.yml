@@ -1,0 +1,41 @@
+name: i18n
+
+# Fails when a locale is missing keys present in English (the source locale), has a message that
+# is not valid ICU, or has arguments or tags that differ from English, and reports the translation
+# coverage of every locale in the job summary.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/*/messages/**"
+      - "scripts/i18n/**"
+      - ".github/workflows/i18n.yml"
+  pull_request:
+    paths:
+      - "apps/*/messages/**"
+      - "scripts/i18n/**"
+      - ".github/workflows/i18n.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Locale completeness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          install: "false"
+      # The check reads messages with the FormatJS ICU parser (the one next-intl uses), so it needs
+      # this package's dependencies: install those, not the whole workspace.
+      - name: Install script dependencies
+        run: pnpm install --frozen-lockfile --filter @fairhour/i18n-scripts
+      - name: Check locales
+        run: pnpm i18n:check

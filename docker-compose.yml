@@ -1,0 +1,59 @@
+# Local development services: PostgreSQL 16 and Mailpit (catches every outgoing email).
+#
+#   docker compose up -d          # start
+#   docker compose down           # stop (data is kept in the `postgres-data` volume)
+#   docker compose down -v        # stop and wipe the data (init scripts run again on next start)
+#
+# Postgres: localhost:5432, user/password/database `fairhour`; also `fairhour_test` (integration
+# tests) and `fairhour_e2e` (Playwright), created by docker/postgres/initdb/.
+# Mailpit:  SMTP on localhost:1025, web UI on http://localhost:8025.
+#
+# These credentials are for local development only. The production compose file for self-hosting
+# (deploy/docker-compose.yml) does not exist yet: it is planned as HOST-003.
+
+name: fairhour
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fairhour
+      POSTGRES_PASSWORD: fairhour
+      POSTGRES_DB: fairhour
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # `pg_isready` only asks whether the server accepts connections: it does not verify that the
+      # database named by `-d` exists. The guarantee comes from `-h 127.0.0.1`: while the init
+      # scripts run, the image starts a temporary server that listens on the unix socket only, so
+      # a check without `-h` would report healthy too early. TCP on 127.0.0.1 answers only after
+      # the init scripts ran (they create `fairhour_test` and `fairhour_e2e`) and the real server
+      # is up. `-d` is kept for documentation and does not change the result.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U fairhour -d fairhour_e2e"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mailpit:
+    image: axllent/mailpit:v1.31
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web UI and API
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
